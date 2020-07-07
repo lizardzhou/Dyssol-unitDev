@@ -2,11 +2,9 @@
 
 #include "UnitDevelopmentDefines.h"
 
-/*
 enum EModels : size_t {
 	simplePressure, peumatic
 };
-*/
 
 class CUnit : public CSteadyStateUnit
 {

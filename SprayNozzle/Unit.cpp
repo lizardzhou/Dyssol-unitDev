@@ -8,31 +8,29 @@ extern "C" DECLDIR CBaseUnit* DYSSOL_CREATE_MODEL_FUN()
 }
 
 //////////////////////////////////////////////////////////////////////////
-/// Pneumatic spray nozzle
+/// Simple pressure spray nozzle
 /// Calculates Sauter diameter of outlet droplets and plot their size distribution (normal distribution)
 
 CUnit::CUnit()
 {
 	// Basic unit's info
-	m_sUnitName = "Spray nozzle - Pneumatic";
+	m_sUnitName = "Spray nozzle - Simple";
 	m_sAuthorName = "XYZhou";
-	m_sUniqueID = "0E3F1ABC-583B-45DB-B980-99958B3D7467";
+	m_sUniqueID = "80D25FB2-6603-4EF2-BB81-F33F25DCEAE4";
 
 	/// Add ports
 	AddPort("InPort", INPUT_PORT);
 	AddPort("OutPort", OUTPUT_PORT);
 
 	/// Add unit parameters
-	//AddGroupParameter("Model", simplePressure, { simplePressure, peumatic }, { "Simple pressure nozzle", "Pneumatic nozzle" }, "Atomization model");
+	AddGroupParameter("Model", simplePressure, { simplePressure, peumatic }, { "Simple pressure nozzle", "Pneumatic nozzle" }, "Atomization model");
 	AddConstParameter("D", 0, 2, 1, "mm", "Nozzle diameter"); // nozzle diameter
 	AddConstParameter("deltaP", 30, 200, 50, "bar", "Pressure difference of nozzle"); // pressure drop in nozzle
 	AddConstParameter("stdDev", 0, 100, 1e-3, "mm", "Standard deviaiton of droplet size distribution"); // standard deviation
 
-	/*
 	/// Allocation of parameter to each elememt in the model
 	AddParametersToGroup("Model", "Simple pressure nozzle", {"D", "deltaP", "stdDev"});
 	AddParametersToGroup("Model", "Pneumatic nozzle", { "D", "deltaP", "stdDev" });
-	*/
 }
 
 CUnit::~CUnit()
@@ -51,6 +49,8 @@ void CUnit::Initialize(double _dTime)
 	}
 
 	//Add plot for droplet size distribution
+	AddPlot("Plot 1", "Droplet size [mm]", "PDF");
+	AddCurveOnPlot("Plot 1", "Curve 1");
 }
 
 void CUnit::Simulate(double _dTime)
@@ -83,10 +83,9 @@ void CUnit::Simulate(double _dTime)
 	
 	//Physical properties of inlet liquid
 	double massLiquid = pInStream->GetCompoundMassFlow(_dTime, compounds[0], SOA_LIQUID, BASIS_MASS);
-	double massGas = pInStream->GetCompoundMassFlow(_dTime, compounds[1], SOA_LIQUID, BASIS_MASS);
 	double densityLiquid = pInStream->GetCompoundTPDProp(_dTime, compounds[0], DENSITY);
 	double volumeLiquid = massLiquid / densityLiquid;
-	double sigma = pInStream->GetCompoundInteractionProp(_dTime, compounds[0], compounds[1], INTERFACE_TENSION); //Interphase tension liquid/gas
+	double sigmaLiquid = pInStream->GetCompoundInteractionProp(_dTime, compounds[0], compounds[1], INTERFACE_TENSION); //Interphase tension liquid/gas
 						 //other option: pInStream->GetCompoundTPDProp(_dTime, compounds[0], TP_PROP_USER_DEFINED_01); // Surface tension of liquid
 	double viscosityLiquid = pInStream->GetCompoundTPDProp(_dTime, compounds[0], VISCOSITY);
 
@@ -96,13 +95,21 @@ void CUnit::Simulate(double _dTime)
 	//Unit parameters
 	double D = GetConstParameterValue("D") * 1e-3; // Convert unit of nozzle diameter to [m]
 	double deltaP = GetConstParameterValue("deltaP") * 1.013e5; // Convert unit of pressure difference to [Pa]
-	double stdDev = GetConstParameterValue("stdDev") * 1e-3; // Convert unit of standard deviation to [m]
+	double stdDev = GetConstParameterValue("stdDev");
 
 	//Calculate Sauter-diameter of droplets
-	double sauterFlowOut = 0.35 * pow(deltaP * D / (sigma * pow(1 + massGas / massLiquid, 2)), -0.4) * 
-						   (1 + 2.5 * viscosityLiquid / sqrt(sigma * densityLiquid * D));
+	double sauterFlowOut = 2.3 * ((4 * volumeLiquid) / (D * MATH_PI * sqrt(2 * deltaP / densityLiquid))) *
+								 pow(D * sqrt(deltaP * densityLiquid / viscosityLiquid), -0.25) * 
+								 pow(deltaP * D / sigmaLiquid, -0.25) *
+								 pow(densityLiquid / densityGas, 0.25);
 	
-	//Plotting calculated Sauter-diameter with user-input standard deviation
+	//Plotting calculated Sauter-diameter with user-input standard deviation - now only a test
+	std::vector<double> test = {1,2,3,4,5};
+	std::vector<double> result;
+	for (int i = 0; i < test.size(); i++) {
+		result.push_back(pow(test[i],2));
+	}
+	AddPointOnCurve("Plot 1", "Curve 1", test, result);
 
 }
 

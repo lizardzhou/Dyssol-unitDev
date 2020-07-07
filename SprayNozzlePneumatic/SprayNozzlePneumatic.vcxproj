@@ -13,7 +13,7 @@
   <PropertyGroup Label="Globals">
     <ProjectGuid>{678D1686-A5A7-4994-B0AD-DC1F6C11A24F}</ProjectGuid>
     <RootNamespace>SteadyState</RootNamespace>
-    <ProjectName>Unit_SprayNozzle</ProjectName>
+    <ProjectName>Unit_SprayNozzlePneumatic</ProjectName>
     <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
