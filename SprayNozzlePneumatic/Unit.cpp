@@ -103,7 +103,7 @@ void CUnit::Simulate(double _dTime)
 								 pow(deltaP * D / sigmaLiquid, -0.25) *
 								 pow(densityLiquid / densityGas, 0.25);
 	
-	//Plotting calculated Sauter-diameter with user-input standard deviation
+	//Plotting calculated Sauter-diameter with user-input standard deviation - now only a test...
 	std::vector<double> test = {1,2,3,4,5};
 	std::vector<double> result;
 	for (int i = 0; i < test.size(); i++) {
