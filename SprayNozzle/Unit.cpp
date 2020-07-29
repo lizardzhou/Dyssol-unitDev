@@ -8,8 +8,10 @@ extern "C" DECLDIR CBaseUnit* DYSSOL_CREATE_MODEL_FUN()
 }
 
 //////////////////////////////////////////////////////////////////////////
-/// Spray nozzle with 2 different models: 1) simple pressure; 2) pneumatic
-/// Calculates Sauter diameter of outlet droplets and plot their size distribution (log-normal distribution)
+/// Spray nozzle with 3 different models: 1) simple pressure; 2) pneumatic with external mixing 3) pneumatic with internal mixing
+/// User only needs to define the liquid phase. In case of pneumatic model, the gas phase will be calculated using ALR
+/// Calculates Sauter diameter and count median, mean, mode diameter
+/// Plot droplet size distribution (log-normal distribution)
 
 CUnit::CUnit()
 {
@@ -23,12 +25,18 @@ CUnit::CUnit()
 	AddPort("OutPort", OUTPUT_PORT);
 
 	// Add groups and unit parameters
-	AddGroupParameter("Model", simplePressure, { simplePressure, pneumatic }, { "Simple pressure nozzle", "Pneumatic nozzle" }, "Atomization model");
-	AddConstParameter("D", 0, 2, 1, "mm", "Nozzle diameter"); // nozzle diameter
-	AddConstParameter("deltaP", 30, 200, 50, "bar", "Pressure difference of nozzle"); // pressure drop in nozzle
+	AddGroupParameter("Model", simplePressure, { simplePressure, pneumaticExternal, pneumaticInternal }, { "Simple pressure nozzle", "2-Phase nozzle with external mixing", "2-Phase nozzle with internal mixing" }, "Atomization model");
+	AddConstParameter("D", 1, 2, 1, "mm", "Liquid oriface diameter"); // nozzle diameter for simple pressure model
+	AddConstParameter("liquidD", 0.5, 2, 1, "mm", "Liquid oriface diameter"); // nozzle diameter for pneumatic pressure model
+	AddConstParameter("ALR", 1e-5, 5, 1, "-", "Air-to-liquid mass flow ratio"); // air-to-liquid mass flow ratio for 2-phase nozzle
+	AddConstParameter("liquidDeltaP", 30, 200, 50, "bar", "Pressure drop in nozzle"); //liquid pressure drop in simple pressure nozzle
+	AddConstParameter("externalGasDeltaP", 0.5, 3, 3, "bar", "Pressure difference of nozzle"); // gas pressure drop in pneumatic nozzle with external mixing
+	AddConstParameter("internalGasDeltaP", 0.5, 15, 3, "bar", "Pressure difference of nozzle"); // gas pressure drop in pneumatic nozzle with internal mixing
 	AddConstParameter("geoStdDev", 1, 100, 2.5, "-", "Geometric standard deviation of droplet size distribution"); // geometric standard deviation
-	AddParametersToGroup("Model", "Simple pressure nozzle", { "D", "deltaP", "geoStdDev" });
-	AddParametersToGroup("Model", "Pneumatic nozzle", { "D", "deltaP", "geoStdDev" });
+	AddStringParameter("Drop compound", "H2O", "Show the drop compound name");
+	AddParametersToGroup("Model", "Simple pressure nozzle", { "D", "liquidDeltaP", "geoStdDev" });
+	AddParametersToGroup("Model", "2-Phase nozzle with external mixing", { "liquidD", "externalGasDeltaP", "ALR", "geoStdDev" });
+	AddParametersToGroup("Model", "2-Phase nozzle with internal mixing", { "liquidD", "internalGasDeltaP", "ALR", "geoStdDev" });
 }
 
 CUnit::~CUnit()
@@ -36,9 +44,8 @@ CUnit::~CUnit()
 
 }
 
-std::string CUnit::GetCompoundKey(std::string _sCompoundName)
+std::string CUnit::GetCompoundKey(std::string _sCompoundName){
 
-{
 	// Check if compound is defined in material database
 	if (!IsCompoundNameDefined(_sCompoundName)) {
 		RaiseError("Compound \"" + _sCompoundName + "\" is not available in material database.");
@@ -56,12 +63,13 @@ std::string CUnit::GetCompoundKey(std::string _sCompoundName)
 
 void CUnit::Initialize(double _dTime)
 {
-	//Check for liquid and gas phases
-	if (!IsPhaseDefined(SOA_LIQUID)) {
-		RaiseError("Please define the liquid phase which is necessary for the spray process.");
-	}
+	//Check for gas phase
 	if (!IsPhaseDefined(SOA_VAPOR)) {
 		RaiseError("Please define the gas phase which is necessary for the spray process.");
+	}
+	//check for solid phase applied for PSD calculation
+	if (!IsPhaseDefined(SOA_SOLID)) {
+		RaiseError("Please define the solid phase which is necessary for the particle size distribution.");
 	}
 
 	// Get selected model
@@ -71,7 +79,9 @@ void CUnit::Initialize(double _dTime)
 	switch (m_model) {
 		case simplePressure:	InitializeSimplePressure(_dTime); 
 								break;
-		case pneumatic:			InitializePneumatic(_dTime); 
+		case pneumaticExternal:	InitializePneumaticExternal(_dTime); 
+								break;
+		case pneumaticInternal:	InitializePneumaticInternal(_dTime);
 								break;
 	}
 }
@@ -86,9 +96,10 @@ void CUnit::InitializeSimplePressure(double _dTime) {
 	AddStateVariable("Count median diameter [mm]", 0, true);
 	AddStateVariable("Count mean diameter [mm]", 0, true);
 	AddStateVariable("Count mode diameter [mm]", 0, true);
+	AddStateVariable("Ohnesorge number [-]", 0, true);
 }
 
-void CUnit::InitializePneumatic(double _dTime) {
+void CUnit::InitializePneumaticExternal(double _dTime) {
 	//Add plot for droplet size distribution
 	AddPlot("Probability density function", "Droplet size [mm]", "PDF", "Time");
 	AddPlot("Cumulative distribution function", "Droplet size [mm]", "CDF", "Time");
@@ -98,6 +109,20 @@ void CUnit::InitializePneumatic(double _dTime) {
 	AddStateVariable("Count median diameter [mm]", 0, true);
 	AddStateVariable("Count mean diameter [mm]", 0, true);
 	AddStateVariable("Count mode diameter [mm]", 0, true);
+	AddStateVariable("Ohnesorge number [-]", 0, true);
+}
+
+void CUnit::InitializePneumaticInternal(double _dTime) {
+	//Add plot for droplet size distribution
+	AddPlot("Probability density function", "Droplet size [mm]", "PDF", "Time");
+	AddPlot("Cumulative distribution function", "Droplet size [mm]", "CDF", "Time");
+
+	//Add results: calculated Sauter, median and mean diameter
+	AddStateVariable("Sauter diameter [mm]", 0, true);
+	AddStateVariable("Count median diameter [mm]", 0, true);
+	AddStateVariable("Count mean diameter [mm]", 0, true);
+	AddStateVariable("Count mode diameter [mm]", 0, true);
+	AddStateVariable("Ohnesorge number [-]", 0, true);
 }
 
 void CUnit::Simulate(double _dTime)
@@ -106,7 +131,9 @@ void CUnit::Simulate(double _dTime)
 	switch (m_model) {
 		case simplePressure:	SimulateSimplePressure(_dTime);
 								break;
-		case pneumatic:			SimulatePneumatic(_dTime);
+		case pneumaticExternal:	SimulatePneumaticExternal(_dTime);
+								break;
+		case pneumaticInternal:	SimulatePneumaticInternal(_dTime);
 								break;
 	}
 
@@ -121,40 +148,45 @@ void CUnit::SimulateSimplePressure(double _dTime) {
 
 	pOutStream->CopyFromStream(pInStream, _dTime);
 
-	//Check compounds: currently only 2-compound model of liquid/gas available
+	//Define compound IDs: currently this model is only applicable for water/air system
+	std::string liquidKey = GetCompoundKey("H2O");
+	std::string gasKey = GetCompoundKey("Air");
+
+	/*
+	//Check compounds: for further extension with other liquid/gas-systems than water/air
 	std::vector<std::string> compounds = GetCompoundsList();
 	double soaComp0 = GetCompoundConstant(compounds[0], SOA_AT_NORMAL_CONDITIONS);
 	double soaComp1 = GetCompoundConstant(compounds[1], SOA_AT_NORMAL_CONDITIONS);
-
 	if (compounds.size() > 2) {
 		RaiseError("Only 2-compound model is available.");
 	}
-
 	if (soaComp0 == 0 || soaComp1 == 0) {
 		RaiseError("Solid phase is not applicable.");
 	}
 	else if (soaComp0 == soaComp1) {
 		RaiseError("Compounds of same phase is not applicable.");
 	}
-	else if (soaComp0 == 2 && soaComp1 == 1) { // Sequence of compounds for calculation: 1st is liquid and 2nd is gas. Rearrange the position of liquid and gas compound if needed
+	//Sequence of compounds for calculation: 1st is liquid and 2nd is gas. Rearrange the position of liquid and gas compound if needed
+	else if (soaComp0 == 2 && soaComp1 == 1) {
 		std::string exchange = compounds[0];
 		compounds[0] = compounds[1];
 		compounds[1] = exchange;
 	}
+	*/
 
-	//Physical properties of inlet liquid
-	double massLiquid = pInStream->GetCompoundMassFlow(_dTime, compounds[0], SOA_LIQUID);
-	double densityLiquid = pInStream->GetCompoundTPDProp(_dTime, compounds[0], DENSITY);
+	//Physical properties of liquid
+	double massLiquid = pInStream->GetMassFlow(_dTime);
+	double densityLiquid = pInStream->GetCompoundTPDProp(_dTime, liquidKey, DENSITY);
 	double volumeLiquid = massLiquid / densityLiquid;
-	double sigmaLiquid = GetCompoundConstant(compounds[0], CONST_PROP_USER_DEFINED_01);
-	double viscosityLiquid = pInStream->GetCompoundTPDProp(_dTime, compounds[0], VISCOSITY);
+	double sigmaLiquid = GetCompoundConstant(liquidKey, CONST_PROP_USER_DEFINED_01);
+	double viscosityLiquid = pInStream->GetCompoundTPDProp(_dTime, liquidKey, VISCOSITY);
 
-	//Physical properties of inlet gas
-	double densityGas = pInStream->GetCompoundTPDProp(_dTime, compounds[1], DENSITY);
+	//Physical properties of gas
+	double densityGas = pInStream->GetCompoundTPDProp(_dTime, gasKey, DENSITY);
 
 	//Unit parameters
 	double D = GetConstParameterValue("D") * 1e-3; // Convert unit [mm] to [m]
-	double deltaP = GetConstParameterValue("deltaP") * 1e5; // Convert unit [bar] to [Pa]
+	double deltaP = GetConstParameterValue("liquidDeltaP") * 1e5; // Convert unit [bar] to [Pa]
 	double gDev = GetConstParameterValue("geoStdDev");
 
 	//Calculate Sauter-diameter of droplets in [mm]
@@ -168,12 +200,15 @@ void CUnit::SimulateSimplePressure(double _dTime) {
 	double mean = median * exp(0.5 * pow(log(gDev), 2));
 	//Calculate count mode diameter in [mm]
 	double mode = median * exp(-0.5 * pow(log(gDev), 2));
+	//Calculate Ohnesorge number
+	double oh = viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * D);
 
 	//Set calculated values for the output
 	SetStateVariable("Sauter diameter [mm]", sauter);
 	SetStateVariable("Count median diameter [mm]", median);
 	SetStateVariable("Count mean diameter [mm]", mean);
 	SetStateVariable("Count mode diameter [mm]", mode);
+	SetStateVariable("Ohnesorge number [-]", oh);
 	
 	//Plot PDF
 	std::vector<double> diameter1;
@@ -195,50 +230,39 @@ void CUnit::SimulateSimplePressure(double _dTime) {
 	AddCurveOnPlot("Cumulative distribution function", _dTime);
 	AddPointOnCurve("Cumulative distribution function", _dTime, diameter2, cdf);
 
-	//Set outlet flow mass
+	//Set outlet flow information
+	pOutStream->SetMassFlow(_dTime, 0);
 	pOutStream->SetMassFlow(_dTime, massLiquid);
+	pOutStream->SetPSD(_dTime, PSD_q0, pdf);
+	
 }
 
-void CUnit::SimulatePneumatic(double _dTime) {
+void CUnit::SimulatePneumaticExternal(double _dTime) {
 	CMaterialStream* pInStream = GetPortStream("InPort");
 	CMaterialStream* pOutStream = GetPortStream("OutPort");
 
-	//Check compounds: currently only 2-compound model of liquid/gas available
-	std::vector<std::string> compounds = GetCompoundsList();
-	double soaComp0 = GetCompoundConstant(compounds[0], SOA_AT_NORMAL_CONDITIONS);
-	double soaComp1 = GetCompoundConstant(compounds[1], SOA_AT_NORMAL_CONDITIONS);
+	pOutStream->CopyFromStream(pInStream, _dTime);
 
-	if (compounds.size() > 2) {
-		RaiseError("Only 2-compound model is available.");
-	}
-
-	if (soaComp0 == 0 || soaComp1 == 0) {
-		RaiseError("Solid phase is not applicable.");
-	}
-	else if (soaComp0 == soaComp1) {
-		RaiseError("Compounds of same phase is not applicable.");
-	}
-	else if (soaComp0 == 2 && soaComp1 == 1) { // Sequence of compounds for calculation: 1st is liquid and 2nd is gas. Rearrange the position of liquid and gas compound if needed
-		std::string exchange = compounds[0];
-		compounds[0] = compounds[1];
-		compounds[1] = exchange;
-	}
-
-	//Physical properties of inlet liquid
-	double massLiquid = pInStream->GetCompoundMassFlow(_dTime, compounds[0], SOA_LIQUID);
-	double densityLiquid = pInStream->GetCompoundTPDProp(_dTime, compounds[0], DENSITY);
-	double volumeLiquid = massLiquid / densityLiquid;
-	double sigmaLiquid = GetCompoundConstant(compounds[0], CONST_PROP_USER_DEFINED_01);
-	double viscosityLiquid = pInStream->GetCompoundTPDProp(_dTime, compounds[0], VISCOSITY);
-
-	//Physical properties of inlet gas
-	double densityGas = pInStream->GetCompoundTPDProp(_dTime, compounds[1], DENSITY);
-	double massGas = pInStream->GetCompoundMassFlow(_dTime, compounds[1], SOA_LIQUID, BASIS_MASS);
+	//Define compound IDs: currently this model is only applicable for water/air system
+	std::string liquidKey = GetCompoundKey("H2O");
+	std::string gasKey = GetCompoundKey("Air");
 
 	//Unit parameters
-	double D = GetConstParameterValue("D") * 1e-3; // Convert unit [mm] to [m]
-	double deltaP = GetConstParameterValue("deltaP") * 1e5; // Convert unit [bar] to [Pa]
+	double D = GetConstParameterValue("liquidD") * 1e-3; // Convert unit [mm] to [m]
+	double deltaP = GetConstParameterValue("externalGasDeltaP") * 1e5; // Convert unit [bar] to [Pa]
 	double gDev = GetConstParameterValue("geoStdDev");
+	double alr = GetConstParameterValue("ALR");
+
+	//Physical properties of inlet liquid
+	double massLiquid = pInStream->GetMassFlow(_dTime);
+	double densityLiquid = pInStream->GetCompoundTPDProp(_dTime, liquidKey, DENSITY);
+	double volumeLiquid = massLiquid / densityLiquid;
+	double sigmaLiquid = GetCompoundConstant(liquidKey, CONST_PROP_USER_DEFINED_01);
+	double viscosityLiquid = pInStream->GetCompoundTPDProp(_dTime, liquidKey, VISCOSITY);
+
+	//Physical properties of inlet gas
+	double massGas = alr * massLiquid;
+	double densityGas = pInStream->GetCompoundTPDProp(_dTime, gasKey, DENSITY);
 
 	//Calculate Sauter-diameter of droplets in [mm]
 	double sauter = 1e3 * 0.35 * D * pow(deltaP * D / (sigmaLiquid * pow(1 + massGas / massLiquid, 2)), -0.4) *
@@ -249,12 +273,15 @@ void CUnit::SimulatePneumatic(double _dTime) {
 	double mean = median * exp(0.5 * pow(log(gDev), 2));
 	//Calculate count mode diameter in [mm]
 	double mode = median * exp(-0.5 * pow(log(gDev), 2));
+	//Calculate Ohnesorge number
+	double oh = viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * D);
 
 	//Set calculated values for the output
 	SetStateVariable("Sauter diameter [mm]", sauter);
 	SetStateVariable("Count median diameter [mm]", median);
 	SetStateVariable("Count mean diameter [mm]", mean);
 	SetStateVariable("Count mode diameter [mm]", mode);
+	SetStateVariable("Ohnesorge number [-]", oh);
 
 	//Plot PDF
 	std::vector<double> diameter1;
@@ -277,7 +304,85 @@ void CUnit::SimulatePneumatic(double _dTime) {
 	AddPointOnCurve("Cumulative distribution function", _dTime, diameter2, cdf);
 
 	//Set outlet flow mass
+	pOutStream->SetMassFlow(_dTime, 0);
 	pOutStream->SetMassFlow(_dTime, massLiquid + massGas);
+	pOutStream->SetPhaseMassFlow(_dTime, SOA_LIQUID, massLiquid);
+	pOutStream->SetPhaseMassFlow(_dTime, SOA_VAPOR, massGas);
+	pOutStream->SetPSD(_dTime, PSD_q0, pdf);
+}
+
+void CUnit::SimulatePneumaticInternal(double _dTime) {
+	CMaterialStream* pInStream = GetPortStream("InPort");
+	CMaterialStream* pOutStream = GetPortStream("OutPort");
+
+	pOutStream->CopyFromStream(pInStream, _dTime);
+
+	//Define compound IDs: currently this model is only applicable for water/air system
+	std::string liquidKey = GetCompoundKey("H2O");
+	std::string gasKey = GetCompoundKey("Air");
+
+	//Unit parameters
+	double D = GetConstParameterValue("liquidD") * 1e-3; // Convert unit [mm] to [m]
+	double deltaP = GetConstParameterValue("internalGasDeltaP") * 1e5; // Convert unit [bar] to [Pa]
+	double gDev = GetConstParameterValue("geoStdDev");
+	double alr = GetConstParameterValue("ALR");
+
+	//Physical properties of inlet liquid
+	double massLiquid = pInStream->GetMassFlow(_dTime);
+	double densityLiquid = pInStream->GetCompoundTPDProp(_dTime, liquidKey, DENSITY);
+	double volumeLiquid = massLiquid / densityLiquid;
+	double sigmaLiquid = GetCompoundConstant(liquidKey, CONST_PROP_USER_DEFINED_01);
+	double viscosityLiquid = pInStream->GetCompoundTPDProp(_dTime, liquidKey, VISCOSITY);
+
+	//Physical properties of inlet gas
+	double massGas = alr * massLiquid;
+	double densityGas = pInStream->GetCompoundTPDProp(_dTime, gasKey, DENSITY);
+
+	//Calculate Sauter-diameter of droplets in [mm]
+	double sauter = 1e3 * 0.4 * D * pow(deltaP * D / (sigmaLiquid * pow(1 + massGas / massLiquid, 2)), -0.4) *
+		(1 + 0.4 * viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * D));
+	//Calculate count median diameter in [mm]
+	double median = sauter * exp(-2.5 * pow(log(gDev), 2));
+	//Calculate mean diameter in [mm]
+	double mean = median * exp(0.5 * pow(log(gDev), 2));
+	//Calculate count mode diameter in [mm]
+	double mode = median * exp(-0.5 * pow(log(gDev), 2));
+	//Calculate Ohnesorge number
+	double oh = viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * D);
+
+	//Set calculated values for the output
+	SetStateVariable("Sauter diameter [mm]", sauter);
+	SetStateVariable("Count median diameter [mm]", median);
+	SetStateVariable("Count mean diameter [mm]", mean);
+	SetStateVariable("Count mode diameter [mm]", mode);
+	SetStateVariable("Ohnesorge number [-]", oh);
+
+	//Plot PDF
+	std::vector<double> diameter1;
+	std::vector<double> pdf;
+	for (int i = 0; i < 200; i++) {
+		diameter1.push_back(i*1e-3 + 1e-5);
+		pdf.push_back((1 / (sqrt(2 * MATH_PI)*log(gDev)*diameter1[i])) * exp(-0.5 * pow(log(diameter1[i] / median) / log(gDev), 2)));
+	}
+	AddCurveOnPlot("Probability density function", _dTime);
+	AddPointOnCurve("Probability density function", _dTime, diameter1, pdf);
+
+	//Plot CDF
+	std::vector<double> diameter2;
+	std::vector<double> cdf;
+	for (int i = 0; i < 200; i++) {
+		diameter2.push_back(i*1e-3 + 1e-5);
+		cdf.push_back(0.5 + 0.5 * erf((log(diameter2[i] / median)) / (sqrt(2)*log(gDev))));
+	}
+	AddCurveOnPlot("Cumulative distribution function", _dTime);
+	AddPointOnCurve("Cumulative distribution function", _dTime, diameter2, cdf);
+
+	//Set outlet flow mass
+	pOutStream->SetMassFlow(_dTime, 0);
+	pOutStream->SetMassFlow(_dTime, massLiquid + massGas);
+	pOutStream->SetPhaseMassFlow(_dTime, SOA_LIQUID, massLiquid);
+	pOutStream->SetPhaseMassFlow(_dTime, SOA_VAPOR, massGas);
+	pOutStream->SetPSD(_dTime, PSD_q0, pdf);
 }
 
 void CUnit::Finalize()
