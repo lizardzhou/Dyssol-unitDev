@@ -189,52 +189,45 @@ void CUnit::SimulateSimplePressure(double _dTime) {
 	double deltaP = GetConstParameterValue("liquidDeltaP") * 1e5; // Convert unit [bar] to [Pa]
 	double gDev = GetConstParameterValue("geoStdDev");
 
-	//Calculate Sauter-diameter of droplets in [mm]
-	double sauter = 1e3 * 2.3 * D * pow((4 * volumeLiquid) / (pow(D, 2) * MATH_PI * sqrt(2 * deltaP / densityLiquid)), 0.25) *
-									pow(deltaP * D / sigmaLiquid, -0.25) *
-									pow(D * sqrt(deltaP * densityLiquid) / viscosityLiquid, -0.25) *
-									pow(densityLiquid / densityGas, 0.25);
-	//Calculate count median diameter in [mm]
+	//Calculate Sauter-diameter of droplets in [m]
+	double sauter = 2.3 * D * pow((4 * volumeLiquid) / (pow(D, 2) * MATH_PI * sqrt(2 * deltaP / densityLiquid)), 0.25) *
+							  pow(deltaP * D / sigmaLiquid, -0.25) *
+							  pow(D * sqrt(deltaP * densityLiquid) / viscosityLiquid, -0.25) *
+							  pow(densityLiquid / densityGas, 0.25);
+	//Calculate count median diameter in [m]
 	double median = sauter * exp(-2.5 * pow(log(gDev),2));
-	//Calculate count mean diameter in [mm]
+	//Calculate count mean diameter in [m]
 	double mean = median * exp(0.5 * pow(log(gDev), 2));
-	//Calculate count mode diameter in [mm]
+	//Calculate count mode diameter in [m]
 	double mode = median * exp(-0.5 * pow(log(gDev), 2));
 	//Calculate Ohnesorge number
 	double oh = viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * D);
 
-	//Set calculated values for the output
-	SetStateVariable("Sauter diameter [mm]", sauter);
-	SetStateVariable("Count median diameter [mm]", median);
-	SetStateVariable("Count mean diameter [mm]", mean);
-	SetStateVariable("Count mode diameter [mm]", mode);
+	//Set calculated values for unit output
+	SetStateVariable("Sauter diameter [mm]", sauter * 1e3);
+	SetStateVariable("Count median diameter [mm]", median * 1e3);
+	SetStateVariable("Count mean diameter [mm]", mean * 1e3);
+	SetStateVariable("Count mode diameter [mm]", mode * 1e3);
 	SetStateVariable("Ohnesorge number [-]", oh);
 	
-	//Plot PDF
-	std::vector<double> diameter1;
+	//Plot PDF and CDF in unit output
+	std::vector<double> diameter = GetClassesMeans(DISTR_SIZE);
 	std::vector<double> pdf;
-	for (int i = 0; i < 200; i++) {
-		diameter1.push_back(i*1e-3+1e-5);
-		pdf.push_back((1 / (sqrt(2*MATH_PI)*log(gDev)*diameter1[i])) * exp(-0.5 * pow(log(diameter1[i]/median)/log(gDev),2)));
+	std::vector<double> cdf;
+	for (int i = 0; i < diameter.size(); i++) {
+		pdf.push_back((1 / (sqrt(2 * MATH_PI)*log(gDev)*diameter[i])) * exp(-0.5 * pow(log(diameter[i] / median) / log(gDev), 2)));
+		cdf.push_back(0.5 + 0.5 * erf((log(diameter[i] / median)) / (sqrt(2)*log(gDev))));
 	}
 	AddCurveOnPlot("Probability density function", _dTime);
-	AddPointOnCurve("Probability density function", _dTime, diameter1, pdf);
-
-	//Plot CDF
-	std::vector<double> diameter2;
-	std::vector<double> cdf;
-	for (int i = 0; i < 200; i++) {
-		diameter2.push_back(i*1e-3 + 1e-5);
-		cdf.push_back(0.5 + 0.5 * erf((log(diameter2[i]/median))/(sqrt(2)*log(gDev))));
-	}
+	AddPointOnCurve("Probability density function", _dTime, diameter, pdf);
 	AddCurveOnPlot("Cumulative distribution function", _dTime);
-	AddPointOnCurve("Cumulative distribution function", _dTime, diameter2, cdf);
+	AddPointOnCurve("Cumulative distribution function", _dTime, diameter, cdf);
 
-	//Set outlet flow information
+	//Set flow information, PDF and CDF for stream output
 	pOutStream->SetMassFlow(_dTime, 0);
-	pOutStream->SetMassFlow(_dTime, massLiquid);
+	pOutStream->SetPhaseMassFlow(_dTime, SOA_SOLID, massLiquid);
 	pOutStream->SetPSD(_dTime, PSD_q0, pdf);
-	
+	pOutStream->SetPSD(_dTime, PSD_Q0, cdf);
 }
 
 void CUnit::SimulatePneumaticExternal(double _dTime) {
@@ -254,7 +247,7 @@ void CUnit::SimulatePneumaticExternal(double _dTime) {
 	double alr = GetConstParameterValue("ALR");
 
 	//Physical properties of inlet liquid
-	double massLiquid = pInStream->GetMassFlow(_dTime);
+	double massLiquid = pInStream->GetPhaseMassFlow(_dTime, SOA_SOLID);
 	double densityLiquid = pInStream->GetCompoundTPDProp(_dTime, liquidKey, DENSITY);
 	double volumeLiquid = massLiquid / densityLiquid;
 	double sigmaLiquid = GetCompoundConstant(liquidKey, CONST_PROP_USER_DEFINED_01);
@@ -265,8 +258,8 @@ void CUnit::SimulatePneumaticExternal(double _dTime) {
 	double densityGas = pInStream->GetCompoundTPDProp(_dTime, gasKey, DENSITY);
 
 	//Calculate Sauter-diameter of droplets in [mm]
-	double sauter = 1e3 * 0.35 * D * pow(deltaP * D / (sigmaLiquid * pow(1 + massGas / massLiquid, 2)), -0.4) *
-									 (1 + 2.5 * viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * D));
+	double sauter = 0.35 * D * pow(deltaP * D / (sigmaLiquid * pow(1 + massGas / massLiquid, 2)), -0.4) *
+							   (1 + 2.5 * viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * D));
 	//Calculate count median diameter in [mm]
 	double median = sauter * exp(-2.5 * pow(log(gDev), 2));
 	//Calculate mean diameter in [mm]
@@ -277,38 +270,32 @@ void CUnit::SimulatePneumaticExternal(double _dTime) {
 	double oh = viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * D);
 
 	//Set calculated values for the output
-	SetStateVariable("Sauter diameter [mm]", sauter);
-	SetStateVariable("Count median diameter [mm]", median);
-	SetStateVariable("Count mean diameter [mm]", mean);
-	SetStateVariable("Count mode diameter [mm]", mode);
+	SetStateVariable("Sauter diameter [mm]", sauter * 1e3);
+	SetStateVariable("Count median diameter [mm]", median * 1e3);
+	SetStateVariable("Count mean diameter [mm]", mean * 1e3);
+	SetStateVariable("Count mode diameter [mm]", mode * 1e3);
 	SetStateVariable("Ohnesorge number [-]", oh);
 
-	//Plot PDF
-	std::vector<double> diameter1;
+	//Plot PDF and CDF in unit output
+	std::vector<double> diameter = GetClassesMeans(DISTR_SIZE);
 	std::vector<double> pdf;
-	for (int i = 0; i < 200; i++) {
-		diameter1.push_back(i*1e-3 + 1e-5);
-		pdf.push_back((1 / (sqrt(2 * MATH_PI)*log(gDev)*diameter1[i])) * exp(-0.5 * pow(log(diameter1[i] / median) / log(gDev), 2)));
+	std::vector<double> cdf;
+	for (int i = 0; i < diameter.size(); i++) {
+		pdf.push_back((1 / (sqrt(2 * MATH_PI)*log(gDev)*diameter[i])) * exp(-0.5 * pow(log(diameter[i] / median) / log(gDev), 2)));
+		cdf.push_back(0.5 + 0.5 * erf((log(diameter[i] / median)) / (sqrt(2)*log(gDev))));
 	}
 	AddCurveOnPlot("Probability density function", _dTime);
-	AddPointOnCurve("Probability density function", _dTime, diameter1, pdf);
-
-	//Plot CDF
-	std::vector<double> diameter2;
-	std::vector<double> cdf;
-	for (int i = 0; i < 200; i++) {
-		diameter2.push_back(i*1e-3 + 1e-5);
-		cdf.push_back(0.5 + 0.5 * erf((log(diameter2[i] / median)) / (sqrt(2)*log(gDev))));
-	}
+	AddPointOnCurve("Probability density function", _dTime, diameter, pdf);
 	AddCurveOnPlot("Cumulative distribution function", _dTime);
-	AddPointOnCurve("Cumulative distribution function", _dTime, diameter2, cdf);
+	AddPointOnCurve("Cumulative distribution function", _dTime, diameter, cdf);
 
-	//Set outlet flow mass
+	//Set flow information, PDF and CDF for stream output
 	pOutStream->SetMassFlow(_dTime, 0);
 	pOutStream->SetMassFlow(_dTime, massLiquid + massGas);
-	pOutStream->SetPhaseMassFlow(_dTime, SOA_LIQUID, massLiquid);
+	pOutStream->SetPhaseMassFlow(_dTime, SOA_SOLID, massLiquid);
 	pOutStream->SetPhaseMassFlow(_dTime, SOA_VAPOR, massGas);
 	pOutStream->SetPSD(_dTime, PSD_q0, pdf);
+	pOutStream->SetPSD(_dTime, PSD_Q0, cdf);
 }
 
 void CUnit::SimulatePneumaticInternal(double _dTime) {
@@ -328,7 +315,7 @@ void CUnit::SimulatePneumaticInternal(double _dTime) {
 	double alr = GetConstParameterValue("ALR");
 
 	//Physical properties of inlet liquid
-	double massLiquid = pInStream->GetMassFlow(_dTime);
+	double massLiquid = pInStream->GetPhaseMassFlow(_dTime, SOA_SOLID);
 	double densityLiquid = pInStream->GetCompoundTPDProp(_dTime, liquidKey, DENSITY);
 	double volumeLiquid = massLiquid / densityLiquid;
 	double sigmaLiquid = GetCompoundConstant(liquidKey, CONST_PROP_USER_DEFINED_01);
@@ -339,8 +326,8 @@ void CUnit::SimulatePneumaticInternal(double _dTime) {
 	double densityGas = pInStream->GetCompoundTPDProp(_dTime, gasKey, DENSITY);
 
 	//Calculate Sauter-diameter of droplets in [mm]
-	double sauter = 1e3 * 0.4 * D * pow(deltaP * D / (sigmaLiquid * pow(1 + massGas / massLiquid, 2)), -0.4) *
-		(1 + 0.4 * viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * D));
+	double sauter = 0.4 * D * pow(deltaP * D / (sigmaLiquid * pow(1 + massGas / massLiquid, 2)), -0.4) *
+							  (1 + 0.4 * viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * D));
 	//Calculate count median diameter in [mm]
 	double median = sauter * exp(-2.5 * pow(log(gDev), 2));
 	//Calculate mean diameter in [mm]
@@ -351,38 +338,32 @@ void CUnit::SimulatePneumaticInternal(double _dTime) {
 	double oh = viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * D);
 
 	//Set calculated values for the output
-	SetStateVariable("Sauter diameter [mm]", sauter);
-	SetStateVariable("Count median diameter [mm]", median);
-	SetStateVariable("Count mean diameter [mm]", mean);
-	SetStateVariable("Count mode diameter [mm]", mode);
+	SetStateVariable("Sauter diameter [mm]", sauter * 1e3);
+	SetStateVariable("Count median diameter [mm]", median * 1e3);
+	SetStateVariable("Count mean diameter [mm]", mean * 1e3);
+	SetStateVariable("Count mode diameter [mm]", mode * 1e3);
 	SetStateVariable("Ohnesorge number [-]", oh);
 
-	//Plot PDF
-	std::vector<double> diameter1;
+	//Plot PDF and CDF in unit output
+	std::vector<double> diameter = GetClassesMeans(DISTR_SIZE);
 	std::vector<double> pdf;
-	for (int i = 0; i < 200; i++) {
-		diameter1.push_back(i*1e-3 + 1e-5);
-		pdf.push_back((1 / (sqrt(2 * MATH_PI)*log(gDev)*diameter1[i])) * exp(-0.5 * pow(log(diameter1[i] / median) / log(gDev), 2)));
+	std::vector<double> cdf;
+	for (int i = 0; i < diameter.size(); i++) {
+		pdf.push_back((1 / (sqrt(2 * MATH_PI)*log(gDev)*diameter[i])) * exp(-0.5 * pow(log(diameter[i] / median) / log(gDev), 2)));
+		cdf.push_back(0.5 + 0.5 * erf((log(diameter[i] / median)) / (sqrt(2)*log(gDev))));
 	}
 	AddCurveOnPlot("Probability density function", _dTime);
-	AddPointOnCurve("Probability density function", _dTime, diameter1, pdf);
-
-	//Plot CDF
-	std::vector<double> diameter2;
-	std::vector<double> cdf;
-	for (int i = 0; i < 200; i++) {
-		diameter2.push_back(i*1e-3 + 1e-5);
-		cdf.push_back(0.5 + 0.5 * erf((log(diameter2[i] / median)) / (sqrt(2)*log(gDev))));
-	}
+	AddPointOnCurve("Probability density function", _dTime, diameter, pdf);
 	AddCurveOnPlot("Cumulative distribution function", _dTime);
-	AddPointOnCurve("Cumulative distribution function", _dTime, diameter2, cdf);
+	AddPointOnCurve("Cumulative distribution function", _dTime, diameter, cdf);
 
-	//Set outlet flow mass
+	//Set flow information, PDF and CDF for stream output
 	pOutStream->SetMassFlow(_dTime, 0);
 	pOutStream->SetMassFlow(_dTime, massLiquid + massGas);
-	pOutStream->SetPhaseMassFlow(_dTime, SOA_LIQUID, massLiquid);
+	pOutStream->SetPhaseMassFlow(_dTime, SOA_SOLID, massLiquid);
 	pOutStream->SetPhaseMassFlow(_dTime, SOA_VAPOR, massGas);
 	pOutStream->SetPSD(_dTime, PSD_q0, pdf);
+	pOutStream->SetPSD(_dTime, PSD_Q0, cdf);
 }
 
 void CUnit::Finalize()
