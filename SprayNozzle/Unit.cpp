@@ -1,6 +1,7 @@
 #define DLL_EXPORT
 #include "Unit.h"
 #include "math.h"
+#include <algorithm>
 
 extern "C" DECLDIR CBaseUnit* DYSSOL_CREATE_MODEL_FUN()
 {
@@ -8,7 +9,11 @@ extern "C" DECLDIR CBaseUnit* DYSSOL_CREATE_MODEL_FUN()
 }
 
 //////////////////////////////////////////////////////////////////////////
-/// Spray nozzle with 3 different models: 1) simple pressure; 2) pneumatic with external mixing 3) pneumatic with internal mixing
+/// Spray nozzle with 4 different models: 
+///  1) simple pressure; 
+///  2) pneumatic with external mixing; 
+///  3) pneumatic with internal mixing; 
+///  4) Rotary;
 /// User only needs to define the liquid phase. In case of pneumatic model, the gas phase will be calculated using ALR
 /// Calculates Sauter diameter and count median, mean, mode diameter
 /// Plot droplet size distribution (log-normal distribution)
@@ -25,18 +30,22 @@ CUnit::CUnit()
 	AddPort("OutPort", OUTPUT_PORT);
 
 	// Add groups and unit parameters
-	AddGroupParameter("Model", simplePressure, { simplePressure, pneumaticExternal, pneumaticInternal }, { "Simple pressure nozzle", "2-Phase nozzle with external mixing", "2-Phase nozzle with internal mixing" }, "Atomization model");
+	AddGroupParameter("Model", simplePressure, { simplePressure, pneumaticExternal, pneumaticInternal, rotary }, { "Simple pressure atomizer", "2-Phase atomizer with external mixing", "2-Phase atomizer with internal mixing", "Rotary atomizer" }, "Atomization model");
 	AddConstParameter("D", 1, 2, 1, "mm", "Liquid oriface diameter"); // nozzle diameter for simple pressure model
 	AddConstParameter("liquidD", 0.5, 2, 1, "mm", "Liquid oriface diameter"); // nozzle diameter for pneumatic pressure model
+	AddConstParameter("diskD", 40, 120, 50, "mm", "Disk diameter"); // disk diameter for rotary model
+	AddConstParameter("R", 40, 180, 50, "mm", "Downstream distance along the spray trajectory"); // downstream distance along the spray trajectory
+	AddConstParameter("omega", 830, 1700, 1500, "rad/s", "Angular velocity"); // angular speed for rotary model
 	AddConstParameter("ALR", 1e-5, 5, 1, "-", "Air-to-liquid mass flow ratio"); // air-to-liquid mass flow ratio for 2-phase nozzle
 	AddConstParameter("liquidDeltaP", 30, 200, 50, "bar", "Pressure drop in nozzle"); //liquid pressure drop in simple pressure nozzle
 	AddConstParameter("externalGasDeltaP", 0.5, 3, 3, "bar", "Pressure difference of nozzle"); // gas pressure drop in pneumatic nozzle with external mixing
 	AddConstParameter("internalGasDeltaP", 0.5, 15, 3, "bar", "Pressure difference of nozzle"); // gas pressure drop in pneumatic nozzle with internal mixing
 	AddConstParameter("geoStdDev", 1, 100, 2.5, "-", "Geometric standard deviation of droplet size distribution"); // geometric standard deviation
 	AddStringParameter("Drop compound", "H2O", "Show the drop compound name");
-	AddParametersToGroup("Model", "Simple pressure nozzle", { "D", "liquidDeltaP", "geoStdDev" });
-	AddParametersToGroup("Model", "2-Phase nozzle with external mixing", { "liquidD", "externalGasDeltaP", "ALR", "geoStdDev" });
-	AddParametersToGroup("Model", "2-Phase nozzle with internal mixing", { "liquidD", "internalGasDeltaP", "ALR", "geoStdDev" });
+	AddParametersToGroup("Model", "Simple pressure atomizer", { "D", "liquidDeltaP", "geoStdDev" });
+	AddParametersToGroup("Model", "2-Phase atomizer with external mixing", { "liquidD", "externalGasDeltaP", "ALR", "geoStdDev" });
+	AddParametersToGroup("Model", "2-Phase atomizer with internal mixing", { "liquidD", "internalGasDeltaP", "ALR", "geoStdDev" });
+	AddParametersToGroup("Model", "Rotary atomizer", {"diskD", "R", "omega", "geoStdDev"});
 }
 
 CUnit::~CUnit()
@@ -77,21 +86,23 @@ void CUnit::Initialize(double _dTime)
 
 	//Initialization for different models
 	switch (m_model) {
-		case simplePressure:	InitializeSimplePressure(_dTime); 
-								break;
-		case pneumaticExternal:	InitializePneumaticExternal(_dTime); 
-								break;
-		case pneumaticInternal:	InitializePneumaticInternal(_dTime);
-								break;
+		case simplePressure:	InitializeOhnesorge(_dTime); 
+		break;
+		case pneumaticExternal:	InitializeOhnesorge(_dTime);
+		break;
+		case pneumaticInternal: InitializeOhnesorge(_dTime);
+		break;
+		case rotary:			InitializeWeber(_dTime);
+		break;
 	}
 }
 
-void CUnit::InitializeSimplePressure(double _dTime) {
+void CUnit::InitializeOhnesorge(double _dTime) {
 	//Add plot for droplet size distribution
 	AddPlot("Probability density function", "Droplet size [mm]", "PDF", "Time");
-	AddPlot("Cumulative distribution function", "Droplet size [mm]", "CDF", "Time");
+	//AddPlot("Cumulative distribution function", "Droplet size [mm]", "CDF", "Time");
 	
-	//Add results: calculated Sauter, median and mean diameter
+	//Add results: calculated Sauter, median and mean diameter, Ohnesorge number
 	AddStateVariable("Sauter diameter [mm]", 0, true);
 	AddStateVariable("Count median diameter [mm]", 0, true);
 	AddStateVariable("Count mean diameter [mm]", 0, true);
@@ -99,30 +110,17 @@ void CUnit::InitializeSimplePressure(double _dTime) {
 	AddStateVariable("Ohnesorge number [-]", 0, true);
 }
 
-void CUnit::InitializePneumaticExternal(double _dTime) {
+void CUnit::InitializeWeber(double _dTime) {
 	//Add plot for droplet size distribution
 	AddPlot("Probability density function", "Droplet size [mm]", "PDF", "Time");
-	AddPlot("Cumulative distribution function", "Droplet size [mm]", "CDF", "Time");
+	//AddPlot("Cumulative distribution function", "Droplet size [mm]", "CDF", "Time");
 
-	//Add results: calculated Sauter, median and mean diameter
+	//Add results: calculated Sauter, median and mean diameter, Weber number
 	AddStateVariable("Sauter diameter [mm]", 0, true);
 	AddStateVariable("Count median diameter [mm]", 0, true);
 	AddStateVariable("Count mean diameter [mm]", 0, true);
 	AddStateVariable("Count mode diameter [mm]", 0, true);
-	AddStateVariable("Ohnesorge number [-]", 0, true);
-}
-
-void CUnit::InitializePneumaticInternal(double _dTime) {
-	//Add plot for droplet size distribution
-	AddPlot("Probability density function", "Droplet size [mm]", "PDF", "Time");
-	AddPlot("Cumulative distribution function", "Droplet size [mm]", "CDF", "Time");
-
-	//Add results: calculated Sauter, median and mean diameter
-	AddStateVariable("Sauter diameter [mm]", 0, true);
-	AddStateVariable("Count median diameter [mm]", 0, true);
-	AddStateVariable("Count mean diameter [mm]", 0, true);
-	AddStateVariable("Count mode diameter [mm]", 0, true);
-	AddStateVariable("Ohnesorge number [-]", 0, true);
+	AddStateVariable("Weber number [-]", 0, true);
 }
 
 void CUnit::Simulate(double _dTime)
@@ -130,11 +128,13 @@ void CUnit::Simulate(double _dTime)
 	//Simulation for different models
 	switch (m_model) {
 		case simplePressure:	SimulateSimplePressure(_dTime);
-								break;
+		break;
 		case pneumaticExternal:	SimulatePneumaticExternal(_dTime);
-								break;
+		break;
 		case pneumaticInternal:	SimulatePneumaticInternal(_dTime);
-								break;
+		break;
+		case rotary:			SimulateRotary(_dTime);
+		break;
 	}
 
 	//Save added state variables for the output
@@ -213,21 +213,31 @@ void CUnit::SimulateSimplePressure(double _dTime) {
 	//Plot PDF and CDF in unit output
 	std::vector<double> diameter = GetClassesMeans(DISTR_SIZE);
 	std::vector<double> pdf;
-	std::vector<double> cdf;
+	//std::vector<double> cdf;
 	for (int i = 0; i < diameter.size(); i++) {
 		pdf.push_back((1 / (sqrt(2 * MATH_PI)*log(gDev)*diameter[i])) * exp(-0.5 * pow(log(diameter[i] / median) / log(gDev), 2)));
-		cdf.push_back(0.5 + 0.5 * erf((log(diameter[i] / median)) / (sqrt(2)*log(gDev))));
+		//cdf.push_back(0.5 + 0.5 * erf((log(diameter[i] / median)) / (sqrt(2)*log(gDev)))); 
+		//extra calculation of CFD is not needed because Dyssol will do this internally
 	}
 	AddCurveOnPlot("Probability density function", _dTime);
 	AddPointOnCurve("Probability density function", _dTime, diameter, pdf);
-	AddCurveOnPlot("Cumulative distribution function", _dTime);
-	AddPointOnCurve("Cumulative distribution function", _dTime, diameter, cdf);
+	//AddCurveOnPlot("Cumulative distribution function", _dTime);
+	//AddPointOnCurve("Cumulative distribution function", _dTime, diameter, cdf);
+
+	//Check if a PDF-plot is incomplete
+	double maxDRange = *(pdf.end() - 1); // last element in PDF
+	double maxD = *std::max_element(pdf.begin(), pdf.end()); // largest element in PDF
+	if (!(maxDRange < 1e-7 && maxD > 1)) { 
+		RaiseWarning("The defined input distribution range is too short to display the complete PDF!");
+	}
+	//maxDRange < 1e-7: the PDF-value at the end should approch 0; 
+	//maxD > 1: if the defined input range is so narrow that all PDF-values are starting values approaching 0, in this case the curve is also incomplete
 
 	//Set flow information, PDF and CDF for stream output
 	pOutStream->SetMassFlow(_dTime, 0);
 	pOutStream->SetPhaseMassFlow(_dTime, SOA_SOLID, massLiquid);
 	pOutStream->SetPSD(_dTime, PSD_q0, pdf);
-	pOutStream->SetPSD(_dTime, PSD_Q0, cdf);
+	//pOutStream->SetPSD(_dTime, PSD_Q0, cdf);
 }
 
 void CUnit::SimulatePneumaticExternal(double _dTime) {
@@ -279,15 +289,24 @@ void CUnit::SimulatePneumaticExternal(double _dTime) {
 	//Plot PDF and CDF in unit output
 	std::vector<double> diameter = GetClassesMeans(DISTR_SIZE);
 	std::vector<double> pdf;
-	std::vector<double> cdf;
+	//std::vector<double> cdf;
 	for (int i = 0; i < diameter.size(); i++) {
 		pdf.push_back((1 / (sqrt(2 * MATH_PI)*log(gDev)*diameter[i])) * exp(-0.5 * pow(log(diameter[i] / median) / log(gDev), 2)));
-		cdf.push_back(0.5 + 0.5 * erf((log(diameter[i] / median)) / (sqrt(2)*log(gDev))));
+		//cdf.push_back(0.5 + 0.5 * erf((log(diameter[i] / median)) / (sqrt(2)*log(gDev))));
 	}
 	AddCurveOnPlot("Probability density function", _dTime);
 	AddPointOnCurve("Probability density function", _dTime, diameter, pdf);
-	AddCurveOnPlot("Cumulative distribution function", _dTime);
-	AddPointOnCurve("Cumulative distribution function", _dTime, diameter, cdf);
+	//AddCurveOnPlot("Cumulative distribution function", _dTime);
+	//AddPointOnCurve("Cumulative distribution function", _dTime, diameter, cdf);
+
+	//Check if a PDF-plot is incomplete
+	double maxDRange = *(pdf.end() - 1); // last element in PDF
+	double maxD = *std::max_element(pdf.begin(), pdf.end()); // largest element in PDF
+	if (!(maxDRange < 1e-7 && maxD > 1)) {
+		RaiseWarning("The defined input distribution range is too short to display the complete PDF!");
+	}
+	//maxDRange < 1e-7: the PDF-value at the end should approch 0; 
+	//maxD > 1: if the defined input range is so narrow that all PDF-values are starting values approaching 0, in this case the curve is also incomplete
 
 	//Set flow information, PDF and CDF for stream output
 	pOutStream->SetMassFlow(_dTime, 0);
@@ -295,7 +314,7 @@ void CUnit::SimulatePneumaticExternal(double _dTime) {
 	pOutStream->SetPhaseMassFlow(_dTime, SOA_SOLID, massLiquid);
 	pOutStream->SetPhaseMassFlow(_dTime, SOA_VAPOR, massGas);
 	pOutStream->SetPSD(_dTime, PSD_q0, pdf);
-	pOutStream->SetPSD(_dTime, PSD_Q0, cdf);
+	//pOutStream->SetPSD(_dTime, PSD_Q0, cdf);
 }
 
 void CUnit::SimulatePneumaticInternal(double _dTime) {
@@ -347,15 +366,24 @@ void CUnit::SimulatePneumaticInternal(double _dTime) {
 	//Plot PDF and CDF in unit output
 	std::vector<double> diameter = GetClassesMeans(DISTR_SIZE);
 	std::vector<double> pdf;
-	std::vector<double> cdf;
+	//std::vector<double> cdf;
 	for (int i = 0; i < diameter.size(); i++) {
 		pdf.push_back((1 / (sqrt(2 * MATH_PI)*log(gDev)*diameter[i])) * exp(-0.5 * pow(log(diameter[i] / median) / log(gDev), 2)));
-		cdf.push_back(0.5 + 0.5 * erf((log(diameter[i] / median)) / (sqrt(2)*log(gDev))));
+		//cdf.push_back(0.5 + 0.5 * erf((log(diameter[i] / median)) / (sqrt(2)*log(gDev))));
 	}
 	AddCurveOnPlot("Probability density function", _dTime);
 	AddPointOnCurve("Probability density function", _dTime, diameter, pdf);
-	AddCurveOnPlot("Cumulative distribution function", _dTime);
-	AddPointOnCurve("Cumulative distribution function", _dTime, diameter, cdf);
+	//AddCurveOnPlot("Cumulative distribution function", _dTime);
+	//AddPointOnCurve("Cumulative distribution function", _dTime, diameter, cdf);
+
+	//Check if a PDF-plot is incomplete
+	double maxDRange = *(pdf.end() - 1); // last element in PDF
+	double maxD = *std::max_element(pdf.begin(), pdf.end()); // largest element in PDF
+	if (!(maxDRange < 1e-7 && maxD > 1)) {
+		RaiseWarning("The defined input distribution range is too short to display the complete PDF!");
+	}
+	//maxDRange < 1e-7: the PDF-value at the end should approch 0; 
+	//maxD > 1: if the defined input range is so narrow that all PDF-values are starting values approaching 0, in this case the curve is also incomplete
 
 	//Set flow information, PDF and CDF for stream output
 	pOutStream->SetMassFlow(_dTime, 0);
@@ -363,7 +391,81 @@ void CUnit::SimulatePneumaticInternal(double _dTime) {
 	pOutStream->SetPhaseMassFlow(_dTime, SOA_SOLID, massLiquid);
 	pOutStream->SetPhaseMassFlow(_dTime, SOA_VAPOR, massGas);
 	pOutStream->SetPSD(_dTime, PSD_q0, pdf);
-	pOutStream->SetPSD(_dTime, PSD_Q0, cdf);
+	//pOutStream->SetPSD(_dTime, PSD_Q0, cdf);
+}
+
+void CUnit::SimulateRotary(double _dTime) {
+	CMaterialStream* pInStream = GetPortStream("InPort");
+	CMaterialStream* pOutStream = GetPortStream("OutPort");
+
+	pOutStream->CopyFromStream(pInStream, _dTime);
+
+	//Define compound IDs: currently this model is only applicable for water/air system
+	std::string liquidKey = GetCompoundKey("H2O");
+	std::string gasKey = GetCompoundKey("Air");
+
+	//Unit parameters
+	double D = GetConstParameterValue("diskD") * 1e-3; // Convert unit [mm] to [m]
+	double R = GetConstParameterValue("R") * 1e-3; // Convert unit [mm] to [m]
+	double omega = GetConstParameterValue("omega");
+	double gDev = GetConstParameterValue("geoStdDev");
+
+	//Physical properties of inlet liquid
+	double massLiquid = pInStream->GetPhaseMassFlow(_dTime, SOA_SOLID);
+	double densityLiquid = pInStream->GetCompoundTPDProp(_dTime, liquidKey, DENSITY);
+	double volumeLiquid = massLiquid / densityLiquid;
+	double sigmaLiquid = GetCompoundConstant(liquidKey, CONST_PROP_USER_DEFINED_01);
+	double viscosityLiquid = pInStream->GetCompoundTPDProp(_dTime, liquidKey, VISCOSITY);
+	
+	//Physical properties of inlet gas
+	double densityGas = pInStream->GetCompoundTPDProp(_dTime, gasKey, DENSITY);
+
+	//Calculate Sauter-diameter of droplets in [mm]
+	double sauter = 27.81 * D * pow(volumeLiquid / (omega*pow(D, 3)), 0.051) * pow(R/D, 0.581) *
+								pow(densityLiquid * omega * pow(D,2) / viscosityLiquid, -0.651) * 
+								pow(pow(D,3) * pow(omega,2) * densityLiquid / sigmaLiquid, -0.0218);
+	//Calculate count median diameter in [mm]
+	double median = sauter * exp(-2.5 * pow(log(gDev), 2)); 
+	//Calculate mean diameter in [mm]
+	double mean = median * exp(0.5 * pow(log(gDev), 2));
+	//Calculate count mode diameter in [mm]
+	double mode = median * exp(-0.5 * pow(log(gDev), 2));
+	//Calculate Weber number
+	double we = pow(D, 3) * pow(omega, 2) * densityLiquid / sigmaLiquid;
+
+	//Set calculated values for the output
+	SetStateVariable("Sauter diameter [mm]", sauter * 1e3);
+	SetStateVariable("Count median diameter [mm]", median * 1e3);
+	SetStateVariable("Count mean diameter [mm]", mean * 1e3);
+	SetStateVariable("Count mode diameter [mm]", mode * 1e3);
+	SetStateVariable("Weber number [-]", we);
+
+	//Plot PDF and CDF in unit output
+	std::vector<double> diameter = GetClassesMeans(DISTR_SIZE);
+	std::vector<double> pdf;
+	std::vector<double> cdf;
+	for (int i = 0; i < diameter.size(); i++) {
+		pdf.push_back((1 / (sqrt(2 * MATH_PI)*log(gDev)*diameter[i])) * exp(-0.5 * pow(log(diameter[i] / median) / log(gDev), 2)));
+		//cdf.push_back(0.5 + 0.5 * erf((log(diameter[i] / median)) / (sqrt(2)*log(gDev))));
+	}
+	AddCurveOnPlot("Probability density function", _dTime);
+	AddPointOnCurve("Probability density function", _dTime, diameter, pdf);
+	//AddCurveOnPlot("Cumulative distribution function", _dTime);
+	//AddPointOnCurve("Cumulative distribution function", _dTime, diameter, cdf);
+
+	//Check if a PDF-plot is incomplete
+	double maxDRange = *(pdf.end() - 1); // last element in PDF
+	double maxD = *std::max_element(pdf.begin(), pdf.end()); // largest element in PDF
+	if (!(maxDRange < 1e-7 && maxD > 1)) {
+		RaiseWarning("The defined input distribution range is too short to display the complete PDF!");
+	}
+	//maxDRange < 1e-7: the PDF-value at the end should approch 0; 
+	//maxD > 1: if the defined input range is so narrow that all PDF-values are starting values approaching 0, in this case the curve is also incomplete
+
+	//Set flow information, PDF and CDF for stream output
+	pOutStream->SetMassFlow(_dTime, 0);
+	pOutStream->SetMassFlow(_dTime, massLiquid);
+	pOutStream->SetPSD(_dTime, PSD_q0, pdf);
 }
 
 void CUnit::Finalize()
