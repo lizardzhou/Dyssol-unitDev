@@ -70,6 +70,15 @@ std::string CUnit::GetCompoundKey(std::string _sCompoundName){
 	return "";
 }
 
+void CUnit::calcDiameter(double &sauter, double &gDev, double &median, double &mean, double &mode) {
+	//Calculate count median diameter in [mm]
+	median = sauter * exp(-2.5 * pow(log(gDev), 2));
+	//Calculate mean diameter in [mm]
+	mean = median * exp(0.5 * pow(log(gDev), 2));
+	//Calculate count mode diameter in [mm]
+	mode = median * exp(-0.5 * pow(log(gDev), 2));
+}
+
 void CUnit::Initialize(double _dTime)
 {
 	//Check for gas phase
@@ -194,12 +203,11 @@ void CUnit::SimulateSimplePressure(double _dTime) {
 							  pow(deltaP * D / sigmaLiquid, -0.25) *
 							  pow(D * sqrt(deltaP * densityLiquid) / viscosityLiquid, -0.25) *
 							  pow(densityLiquid / densityGas, 0.25);
-	//Calculate count median diameter in [m]
-	double median = sauter * exp(-2.5 * pow(log(gDev),2));
-	//Calculate count mean diameter in [m]
-	double mean = median * exp(0.5 * pow(log(gDev), 2));
-	//Calculate count mode diameter in [m]
-	double mode = median * exp(-0.5 * pow(log(gDev), 2));
+	//Calculate count median, mean and mode diameter in [mm]
+	double median = 0;
+	double mean = 0;
+	double mode = 0;
+	calcDiameter(sauter, gDev, median, mean, mode);
 	//Calculate Ohnesorge number
 	double oh = viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * D);
 
@@ -225,10 +233,10 @@ void CUnit::SimulateSimplePressure(double _dTime) {
 	//AddPointOnCurve("Cumulative distribution function", _dTime, diameter, cdf);
 
 	//Check if a PDF-plot is incomplete
-	double maxDRange = *(pdf.end() - 1); // last element in PDF
-	double maxD = *std::max_element(pdf.begin(), pdf.end()); // largest element in PDF
-	if (!(maxDRange < 1e-7 && maxD > 1)) { 
-		RaiseWarning("The defined input distribution range is too short to display the complete PDF!");
+	double lastPDF = *(pdf.end() - 1); // last element in PDF
+	double maxPDF = *std::max_element(pdf.begin(), pdf.end()); // largest element in PDF
+	if (!(lastPDF < 1e-7 && maxPDF > 1)) { 
+		RaiseWarning("The defined input distribution range is too short to display the complete PDF, leading to wrong results!");
 	}
 	//maxDRange < 1e-7: the PDF-value at the end should approch 0; 
 	//maxD > 1: if the defined input range is so narrow that all PDF-values are starting values approaching 0, in this case the curve is also incomplete
@@ -270,12 +278,12 @@ void CUnit::SimulatePneumaticExternal(double _dTime) {
 	//Calculate Sauter-diameter of droplets in [mm]
 	double sauter = 0.35 * D * pow(deltaP * D / (sigmaLiquid * pow(1 + massGas / massLiquid, 2)), -0.4) *
 							   (1 + 2.5 * viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * D));
-	//Calculate count median diameter in [mm]
-	double median = sauter * exp(-2.5 * pow(log(gDev), 2));
-	//Calculate mean diameter in [mm]
-	double mean = median * exp(0.5 * pow(log(gDev), 2));
-	//Calculate count mode diameter in [mm]
-	double mode = median * exp(-0.5 * pow(log(gDev), 2));
+	
+	//Calculate count median, mean and mode diameter in [mm]
+	double median = 0;
+	double mean = 0;
+	double mode = 0;
+	calcDiameter(sauter, gDev, median, mean, mode);
 	//Calculate Ohnesorge number
 	double oh = viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * D);
 
@@ -300,10 +308,10 @@ void CUnit::SimulatePneumaticExternal(double _dTime) {
 	//AddPointOnCurve("Cumulative distribution function", _dTime, diameter, cdf);
 
 	//Check if a PDF-plot is incomplete
-	double maxDRange = *(pdf.end() - 1); // last element in PDF
-	double maxD = *std::max_element(pdf.begin(), pdf.end()); // largest element in PDF
-	if (!(maxDRange < 1e-7 && maxD > 1)) {
-		RaiseWarning("The defined input distribution range is too short to display the complete PDF!");
+	double lastPDF = *(pdf.end() - 1); // last element in PDF
+	double maxPDF = *std::max_element(pdf.begin(), pdf.end()); // largest element in PDF
+	if (!(lastPDF < 1e-7 && maxPDF > 1)) {
+		RaiseWarning("The defined input distribution range is too short to display the complete PDF, leading to wrong results!");
 	}
 	//maxDRange < 1e-7: the PDF-value at the end should approch 0; 
 	//maxD > 1: if the defined input range is so narrow that all PDF-values are starting values approaching 0, in this case the curve is also incomplete
@@ -347,12 +355,11 @@ void CUnit::SimulatePneumaticInternal(double _dTime) {
 	//Calculate Sauter-diameter of droplets in [mm]
 	double sauter = 0.4 * D * pow(deltaP * D / (sigmaLiquid * pow(1 + massGas / massLiquid, 2)), -0.4) *
 							  (1 + 0.4 * viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * D));
-	//Calculate count median diameter in [mm]
-	double median = sauter * exp(-2.5 * pow(log(gDev), 2));
-	//Calculate mean diameter in [mm]
-	double mean = median * exp(0.5 * pow(log(gDev), 2));
-	//Calculate count mode diameter in [mm]
-	double mode = median * exp(-0.5 * pow(log(gDev), 2));
+	//Calculate count median, mean and mode diameter in [mm]
+	double median = 0;
+	double mean = 0;
+	double mode = 0;
+	calcDiameter(sauter, gDev, median, mean, mode);
 	//Calculate Ohnesorge number
 	double oh = viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * D);
 
@@ -377,10 +384,10 @@ void CUnit::SimulatePneumaticInternal(double _dTime) {
 	//AddPointOnCurve("Cumulative distribution function", _dTime, diameter, cdf);
 
 	//Check if a PDF-plot is incomplete
-	double maxDRange = *(pdf.end() - 1); // last element in PDF
-	double maxD = *std::max_element(pdf.begin(), pdf.end()); // largest element in PDF
-	if (!(maxDRange < 1e-7 && maxD > 1)) {
-		RaiseWarning("The defined input distribution range is too short to display the complete PDF!");
+	double lastPDF = *(pdf.end() - 1); // last element in PDF
+	double maxPDF = *std::max_element(pdf.begin(), pdf.end()); // largest element in PDF
+	if (!(lastPDF < 1e-7 && maxPDF > 1)) {
+		RaiseWarning("The defined input distribution range is too short to display the complete PDF, leading to wrong results!");
 	}
 	//maxDRange < 1e-7: the PDF-value at the end should approch 0; 
 	//maxD > 1: if the defined input range is so narrow that all PDF-values are starting values approaching 0, in this case the curve is also incomplete
@@ -424,12 +431,11 @@ void CUnit::SimulateRotary(double _dTime) {
 	double sauter = 27.81 * D * pow(volumeLiquid / (omega*pow(D, 3)), 0.051) * pow(R/D, 0.581) *
 								pow(densityLiquid * omega * pow(D,2) / viscosityLiquid, -0.651) * 
 								pow(pow(D,3) * pow(omega,2) * densityLiquid / sigmaLiquid, -0.0218);
-	//Calculate count median diameter in [mm]
-	double median = sauter * exp(-2.5 * pow(log(gDev), 2)); 
-	//Calculate mean diameter in [mm]
-	double mean = median * exp(0.5 * pow(log(gDev), 2));
-	//Calculate count mode diameter in [mm]
-	double mode = median * exp(-0.5 * pow(log(gDev), 2));
+	//Calculate count median, mean and mode diameter in [mm]
+	double median = 0;
+	double mean = 0;
+	double mode = 0;
+	calcDiameter(sauter, gDev, median, mean, mode);
 	//Calculate Weber number
 	double we = pow(D, 3) * pow(omega, 2) * densityLiquid / sigmaLiquid;
 
@@ -454,10 +460,10 @@ void CUnit::SimulateRotary(double _dTime) {
 	//AddPointOnCurve("Cumulative distribution function", _dTime, diameter, cdf);
 
 	//Check if a PDF-plot is incomplete
-	double maxDRange = *(pdf.end() - 1); // last element in PDF
-	double maxD = *std::max_element(pdf.begin(), pdf.end()); // largest element in PDF
-	if (!(maxDRange < 1e-7 && maxD > 1)) {
-		RaiseWarning("The defined input distribution range is too short to display the complete PDF!");
+	double lastPDF = *(pdf.end() - 1); // last element in PDF
+	double maxPDF = *std::max_element(pdf.begin(), pdf.end()); // largest element in PDF
+	if (!(lastPDF < 1e-7 && maxPDF > 1)) {
+		RaiseWarning("The defined input distribution range is too short to display the complete PDF, leading to wrong results!");
 	}
 	//maxDRange < 1e-7: the PDF-value at the end should approch 0; 
 	//maxD > 1: if the defined input range is so narrow that all PDF-values are starting values approaching 0, in this case the curve is also incomplete

@@ -13,6 +13,7 @@ public:
 	~CUnit();
 
 	std::string GetCompoundKey(std::string _sCompoundName);
+	void calcDiameter(double &sauter, double &gDev, double &median, double &mean, double &mode);
 	EModels m_model;
 	void Initialize(double _dTime) override;
 	void InitializeOhnesorge(double _dTime);	
