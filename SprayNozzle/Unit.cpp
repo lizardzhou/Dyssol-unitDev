@@ -10,11 +10,11 @@ extern "C" DECLDIR CBaseUnit* DYSSOL_CREATE_MODEL_FUN()
 
 //////////////////////////////////////////////////////////////////////////
 /// Spray nozzle with 4 different models: 
-///  1) simple pressure; 
-///  2) pneumatic with external mixing; 
-///  3) pneumatic with internal mixing; 
+///  1) single-fluid; 
+///  2) two-fluid with external mixing; 
+///  3) two-fluid with internal mixing; 
 ///  4) Rotary;
-/// User only needs to define the liquid phase. In case of pneumatic model, the gas phase will be calculated using ALR
+/// User only needs to define the liquid phase as solid. In case of pneumatic model, the gas phase will be calculated using ALR
 /// Calculates Sauter diameter and count median, mean, mode diameter
 /// Plot droplet size distribution (log-normal distribution)
 
@@ -30,22 +30,22 @@ CUnit::CUnit()
 	AddPort("OutPort", OUTPUT_PORT);
 
 	// Add groups and unit parameters
-	AddGroupParameter("Model", simplePressure, { simplePressure, pneumaticExternal, pneumaticInternal, rotary }, { "Simple pressure atomizer", "2-Phase atomizer with external mixing", "2-Phase atomizer with internal mixing", "Rotary atomizer" }, "Atomization model");
-	AddConstParameter("D", 1, 2, 1, "mm", "Liquid oriface diameter"); // nozzle diameter for simple pressure model
-	AddConstParameter("liquidD", 0.5, 2, 1, "mm", "Liquid oriface diameter"); // nozzle diameter for pneumatic pressure model
+	AddGroupParameter("Model", singleFluid, { singleFluid, twoFluidExternal, twoFluidInternal, rotary }, { "Single-fluid nozzle", "Two-fluid nozzle with external mixing", "Two-fluid nozzle with internal mixing", "Rotary nozzle" }, "Atomization model");
+	AddConstParameter("D", 1, 2, 1, "mm", "Liquid oriface diameter"); // nozzle diameter for single-fliud model
+	AddConstParameter("liquidD", 0.5, 2, 1, "mm", "Liquid oriface diameter"); // nozzle diameter for two-fluid model
 	AddConstParameter("diskD", 40, 120, 50, "mm", "Disk diameter"); // disk diameter for rotary model
 	AddConstParameter("R", 40, 180, 50, "mm", "Downstream distance along the spray trajectory"); // downstream distance along the spray trajectory
 	AddConstParameter("omega", 830, 1700, 1500, "rad/s", "Angular velocity"); // angular speed for rotary model
-	AddConstParameter("ALR", 1e-5, 5, 1, "-", "Air-to-liquid mass flow ratio"); // air-to-liquid mass flow ratio for 2-phase nozzle
-	AddConstParameter("liquidDeltaP", 30, 200, 50, "bar", "Pressure drop in nozzle"); //liquid pressure drop in simple pressure nozzle
-	AddConstParameter("externalGasDeltaP", 0.5, 3, 3, "bar", "Pressure difference of nozzle"); // gas pressure drop in pneumatic nozzle with external mixing
-	AddConstParameter("internalGasDeltaP", 0.5, 15, 3, "bar", "Pressure difference of nozzle"); // gas pressure drop in pneumatic nozzle with internal mixing
+	AddConstParameter("ALR", 1e-5, 5, 1, "-", "Air-to-liquid mass flow ratio"); // air-to-liquid mass flow ratio for two-fluid nozzle
+	AddConstParameter("liquidDeltaP", 3, 200, 50, "bar", "Pressure drop in nozzle"); //liquid pressure drop in single-fluid nozzle
+	AddConstParameter("externalGasDeltaP", 0.5, 3, 3, "bar", "Gas pressure drop in nozzle"); // gas pressure drop in two-fluid nozzle with external mixing
+	AddConstParameter("internalGasDeltaP", 0.5, 15, 3, "bar", "Gas pressure drop in nozzle"); // gas pressure drop in two-fluid nozzle with internal mixing
 	AddConstParameter("geoStdDev", 1, 100, 2.5, "-", "Geometric standard deviation of droplet size distribution"); // geometric standard deviation
 	AddStringParameter("Drop compound", "H2O", "Show the drop compound name");
-	AddParametersToGroup("Model", "Simple pressure atomizer", { "D", "liquidDeltaP", "geoStdDev" });
-	AddParametersToGroup("Model", "2-Phase atomizer with external mixing", { "liquidD", "externalGasDeltaP", "ALR", "geoStdDev" });
-	AddParametersToGroup("Model", "2-Phase atomizer with internal mixing", { "liquidD", "internalGasDeltaP", "ALR", "geoStdDev" });
-	AddParametersToGroup("Model", "Rotary atomizer", {"diskD", "R", "omega", "geoStdDev"});
+	AddParametersToGroup("Model", "Single-fluid nozzle", { "D", "liquidDeltaP", "geoStdDev" });
+	AddParametersToGroup("Model", "Two-fluid nozzle with external mixing", { "liquidD", "externalGasDeltaP", "ALR", "geoStdDev" });
+	AddParametersToGroup("Model", "Two-fluid nozzle with internal mixing", { "liquidD", "internalGasDeltaP", "ALR", "geoStdDev" });
+	AddParametersToGroup("Model", "Rotary nozzle", {"diskD", "R", "omega", "geoStdDev"});
 }
 
 CUnit::~CUnit()
@@ -95,11 +95,11 @@ void CUnit::Initialize(double _dTime)
 
 	//Initialization for different models
 	switch (m_model) {
-		case simplePressure:	InitializeOhnesorge(_dTime); 
+		case singleFluid:	InitializeOhnesorge(_dTime); 
 		break;
-		case pneumaticExternal:	InitializeOhnesorge(_dTime);
+		case twoFluidExternal:	InitializeOhnesorge(_dTime);
 		break;
-		case pneumaticInternal: InitializeOhnesorge(_dTime);
+		case twoFluidInternal: InitializeOhnesorge(_dTime);
 		break;
 		case rotary:			InitializeWeber(_dTime);
 		break;
@@ -136,11 +136,11 @@ void CUnit::Simulate(double _dTime)
 {
 	//Simulation for different models
 	switch (m_model) {
-		case simplePressure:	SimulateSimplePressure(_dTime);
+		case singleFluid:	SimulateSingleFluid(_dTime);
 		break;
-		case pneumaticExternal:	SimulatePneumaticExternal(_dTime);
+		case twoFluidExternal:	SimulateTwoFluidExternal(_dTime);
 		break;
-		case pneumaticInternal:	SimulatePneumaticInternal(_dTime);
+		case twoFluidInternal:	SimulateTwoFluidInternal(_dTime);
 		break;
 		case rotary:			SimulateRotary(_dTime);
 		break;
@@ -150,7 +150,7 @@ void CUnit::Simulate(double _dTime)
 	SaveStateVariables(_dTime);
 }
 
-void CUnit::SimulateSimplePressure(double _dTime) {
+void CUnit::SimulateSingleFluid(double _dTime) {
 
 	CMaterialStream* pInStream = GetPortStream("InPort");
 	CMaterialStream* pOutStream = GetPortStream("OutPort");
@@ -248,7 +248,7 @@ void CUnit::SimulateSimplePressure(double _dTime) {
 	//pOutStream->SetPSD(_dTime, PSD_Q0, cdf);
 }
 
-void CUnit::SimulatePneumaticExternal(double _dTime) {
+void CUnit::SimulateTwoFluidExternal(double _dTime) {
 	CMaterialStream* pInStream = GetPortStream("InPort");
 	CMaterialStream* pOutStream = GetPortStream("OutPort");
 
@@ -325,7 +325,7 @@ void CUnit::SimulatePneumaticExternal(double _dTime) {
 	//pOutStream->SetPSD(_dTime, PSD_Q0, cdf);
 }
 
-void CUnit::SimulatePneumaticInternal(double _dTime) {
+void CUnit::SimulateTwoFluidInternal(double _dTime) {
 	CMaterialStream* pInStream = GetPortStream("InPort");
 	CMaterialStream* pOutStream = GetPortStream("OutPort");
 
