@@ -16,8 +16,8 @@ public:
 	void calcDiameter(double &sauter, double &gDev, double &median, double &mean, double &mode);
 	EModels m_model;
 	void Initialize(double _dTime) override;
-	void InitializeOhnesorge(double _dTime);	
-	void InitializeWeber(double _dTime);
+	//void InitializeOhnesorge(double _dTime);	
+	//void InitializeWeber(double _dTime);
 	void Simulate(double _dTime) override;
 	void SimulateSingleFluid(double _dTime);
 	void SimulateTwoFluidExternal(double _dTime);
