@@ -76,7 +76,7 @@ void CUnit::calcDiameter(double &sauter, double &gDev, double &median, double &m
 	//Calculate mean diameter in [mm]
 	mean = median * exp(0.5 * pow(log(gDev), 2));
 	//Calculate count mode diameter in [mm]
-	mode = median * exp(-0.5 * pow(log(gDev), 2));
+	mode = median * exp(-pow(log(gDev), 2));
 }
 
 void CUnit::Initialize(double _dTime)
@@ -109,13 +109,13 @@ void CUnit::Initialize(double _dTime)
 	//Add plot for droplet size distribution
 	AddPlot("Probability density function", "Droplet size [mm]", "PDF", "Time");
 
-	//Add results: calculated Sauter, median and mean diameter, Ohnesorge number
+	//Add results: calculated Sauter, median and mean diameter, dimensionless numbers
 	AddStateVariable("Sauter diameter [micron]", 0, true);
 	AddStateVariable("Count median diameter [micron]", 0, true);
 	AddStateVariable("Count mean diameter [micron]", 0, true);
 	AddStateVariable("Count mode diameter [micron]", 0, true);
-	AddStateVariable("Ohnesorge number [-]", 0, true);
-	AddStateVariable("Weber number [-]", 0, true);
+	AddStateVariable("Droplet Ohnesorge number [-]", 0, true);
+	AddStateVariable("Droplet Weber number [-]", 0, true);
 }
 
 /*
@@ -226,18 +226,18 @@ void CUnit::SimulateSingleFluid(double _dTime) {
 	double mode = 0;
 	calcDiameter(sauter, gDev, median, mean, mode);
 	//Calculate Ohnesorge number
-	double oh = viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * D);
+	double ohD = viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * sauter);
 	//Calculate Weber number
 	double velocityLiquid = volumeLiquid / (MATH_PI * pow(D, 2) / 4);
-	double we = densityGas * pow(velocityLiquid, 2) * sauter / sigmaLiquid;
+	double weD = densityGas * pow(velocityLiquid, 2) * sauter / sigmaLiquid;
 
 	//Set calculated values for unit output
 	SetStateVariable("Sauter diameter [micron]", sauter * 1e6);
 	SetStateVariable("Count median diameter [micron]", median * 1e6);
 	SetStateVariable("Count mean diameter [micron]", mean * 1e6);
 	SetStateVariable("Count mode diameter [micron]", mode * 1e6);
-	SetStateVariable("Ohnesorge number [-]", oh);
-	SetStateVariable("Weber number [-]", we);
+	SetStateVariable("Droplet Ohnesorge number [-]", ohD);
+	SetStateVariable("Droplet Weber number [-]", weD);
 	
 	//Plot PDF and CDF in unit output
 	std::vector<double> diameter = GetClassesMeans(DISTR_SIZE);
@@ -301,18 +301,18 @@ void CUnit::SimulateTwoFluidExternal(double _dTime) {
 	double mode = 0;
 	calcDiameter(sauter, gDev, median, mean, mode);
 	//Calculate Ohnesorge number
-	double oh = viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * D);
+	double ohD = viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * sauter);
 	//Calculate Weber number
 	double velocityLiquid = volumeLiquid / (MATH_PI * pow(D, 2) / 4);
-	double we = densityGas * pow(velocityLiquid, 2) * sauter / sigmaLiquid;
+	double weD = densityGas * pow(velocityLiquid, 2) * sauter / sigmaLiquid;
 
 	//Set calculated values for the output
 	SetStateVariable("Sauter diameter [micron]", sauter * 1e6);
 	SetStateVariable("Count median diameter [micron]", median * 1e6);
 	SetStateVariable("Count mean diameter [micron]", mean * 1e6);
 	SetStateVariable("Count mode diameter [micron]", mode * 1e6);
-	SetStateVariable("Ohnesorge number [-]", oh);
-	SetStateVariable("Weber number [-]", we);
+	SetStateVariable("Droplet Ohnesorge number [-]", ohD);
+	SetStateVariable("Droplet Weber number [-]", weD);
 
 	//Plot PDF and CDF in unit output
 	std::vector<double> diameter = GetClassesMeans(DISTR_SIZE);
@@ -376,19 +376,19 @@ void CUnit::SimulateTwoFluidInternal(double _dTime) {
 	double mean = 0;
 	double mode = 0;
 	calcDiameter(sauter, gDev, median, mean, mode);
-	//Calculate Ohnesorge number
-	double oh = viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * sauter);
+	//Calculate Ohnesorge numbers
+	double ohD = viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * sauter);
 	//Calculate Weber number
 	double velocityLiquid = volumeLiquid / (MATH_PI * pow(D, 2) / 4);
-	double we = densityGas * pow(velocityLiquid, 2) * sauter / sigmaLiquid;
+	double weD = densityGas * pow(velocityLiquid, 2) * sauter / sigmaLiquid;
 
 	//Set calculated values for the output
 	SetStateVariable("Sauter diameter [micron]", sauter * 1e6);
 	SetStateVariable("Count median diameter [micron]", median * 1e6);
 	SetStateVariable("Count mean diameter [micron]", mean * 1e6);
 	SetStateVariable("Count mode diameter [micron]", mode * 1e6);
-	SetStateVariable("Ohnesorge number [-]", oh);
-	SetStateVariable("Weber number [-]", we);
+	SetStateVariable("Droplet Ohnesorge number [-]", ohD);
+	SetStateVariable("Droplet Weber number [-]", weD);
 
 	//Plot PDF and CDF in unit output
 	std::vector<double> diameter = GetClassesMeans(DISTR_SIZE);
@@ -429,7 +429,7 @@ void CUnit::SimulateRotary(double _dTime) {
 	//Unit parameters
 	double D = GetConstParameterValue("diskD") * 1e-3; // Convert unit [mm] to [m]
 	double R = GetConstParameterValue("R") * 1e-3; // Convert unit [mm] to [m]
-	double omega = GetConstParameterValue("omega");
+	double omega = GetConstParameterValue("omega") / (2 * MATH_PI);
 	double gDev = GetConstParameterValue("geoStdDev");
 
 	//Physical properties of inlet liquid
@@ -443,27 +443,27 @@ void CUnit::SimulateRotary(double _dTime) {
 	double densityGas = pInStream->GetCompoundTPDProp(_dTime, gasKey, DENSITY);
 
 	//Calculate Sauter-diameter of droplets in [m]
-	double sauter = 27.81 * D * pow(volumeLiquid / (omega*pow(D/2, 3)), 0.051) * pow(R/D, 0.581) *
-								pow(densityLiquid * omega * pow(D/2,2) / viscosityLiquid, -0.651) * 
-								pow(pow(D/2,3) * pow(omega,2) * densityLiquid / sigmaLiquid, -0.0218);
+	double sauter = 27.81 * D * pow(volumeLiquid / (omega*pow(D, 3)), 0.051) * pow(R/D, 0.581) *
+								pow(densityLiquid * omega * pow(D, 2) / viscosityLiquid, -0.651) * 
+								pow(pow(D, 3) * pow(omega, 2) * densityLiquid / sigmaLiquid, -0.0218);
 	//Calculate count median, mean and mode diameter in [m]
 	double median = 0;
 	double mean = 0;
 	double mode = 0;
 	calcDiameter(sauter, gDev, median, mean, mode);
 	//Calculate Ohnesorge number
-	double oh = viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * sauter);
-	//Calculate Weber number
-	double velocityLiquid = omega * R;
-	double we = densityGas * pow(velocityLiquid, 2) * sauter / sigmaLiquid;
+	double ohD = viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * sauter);
+	//Calculate Weber numbers
+	double velocityLiquid = omega * D;
+	double weD = densityGas * pow(velocityLiquid, 2) * sauter / sigmaLiquid;
 
 	//Set calculated values for the output
 	SetStateVariable("Sauter diameter [micron]", sauter * 1e6);
 	SetStateVariable("Count median diameter [micron]", median * 1e6);
 	SetStateVariable("Count mean diameter [micron]", mean * 1e6);
 	SetStateVariable("Count mode diameter [micron]", mode * 1e6);
-	SetStateVariable("Ohnesorge number [-]", oh);
-	SetStateVariable("Weber number [-]", we);
+	SetStateVariable("Droplet Ohnesorge number [-]", ohD);
+	SetStateVariable("Droplet Weber number [-]", weD);
 
 	//Plot PDF and CDF in unit output
 	std::vector<double> diameter = GetClassesMeans(DISTR_SIZE);
