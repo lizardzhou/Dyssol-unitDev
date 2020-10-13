@@ -40,7 +40,7 @@ CUnit::CUnit()
 	AddConstParameter("liquidDeltaP", 3, 200, 50, "bar", "Pressure drop in nozzle"); //liquid pressure drop in single-fluid nozzle
 	AddConstParameter("externalGasDeltaP", 0.5, 3, 3, "bar", "Gas pressure drop in nozzle"); // gas pressure drop in two-fluid nozzle with external mixing
 	AddConstParameter("internalGasDeltaP", 0.5, 15, 3, "bar", "Gas pressure drop in nozzle"); // gas pressure drop in two-fluid nozzle with internal mixing
-	AddConstParameter("geoStdDev", 1, 100, 2.5, "-", "Geometric standard deviation of droplet size distribution"); // geometric standard deviation
+	AddConstParameter("geoStdDev", 1, 5, 1.5, "-", "Geometric standard deviation of droplet size distribution"); // geometric standard deviation
 	AddStringParameter("Drop compound", "H2O", "Show the drop compound name");
 	AddParametersToGroup("Model", "Simple pressure nozzle", { "D", "liquidDeltaP", "geoStdDev" });
 	AddParametersToGroup("Model", "Two-fluid nozzle with external mixing", { "liquidD", "externalGasDeltaP", "ALR", "geoStdDev" });
@@ -292,7 +292,7 @@ void CUnit::SimulateTwoFluidExternal(double _dTime) {
 	double densityGas = pInStream->GetCompoundTPDProp(_dTime, gasKey, DENSITY);
 
 	//Calculate Sauter-diameter of droplets in [m]
-	double sauter = 0.35 * D * pow(deltaP * D / (sigmaLiquid * pow(1 + massGas / massLiquid, 2)), -0.4) *
+	double sauter = 0.35 * D * pow(deltaP * D / (sigmaLiquid * pow(1 + massLiquid / massGas, 2)), -0.4) *
 							   (1 + 2.5 * viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * D));
 	
 	//Calculate count median, mean and mode diameter in [m]
@@ -369,7 +369,7 @@ void CUnit::SimulateTwoFluidInternal(double _dTime) {
 	double densityGas = pInStream->GetCompoundTPDProp(_dTime, gasKey, DENSITY);
 
 	//Calculate Sauter-diameter of droplets in [m]
-	double sauter = 0.4 * D * pow(deltaP * D / (sigmaLiquid * pow(1 + massGas / massLiquid, 2)), -0.4) *
+	double sauter = 0.4 * D * pow(deltaP * D / (sigmaLiquid * pow(1 + massLiquid / massGas, 2)), -0.4) *
 							  (1 + 0.4 * viscosityLiquid / sqrt(sigmaLiquid * densityLiquid * D));
 	//Calculate count median, mean and mode diameter in [m]
 	double median = 0;
