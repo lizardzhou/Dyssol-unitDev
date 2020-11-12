@@ -36,7 +36,7 @@ CUnit::CUnit()
 	AddConstParameter("diskD", 40, 120, 50, "mm", "Disk diameter"); // disk diameter for rotary model
 	AddConstParameter("R", 40, 180, 50, "mm", "Downstream distance along the spray trajectory"); // downstream distance along the spray trajectory
 	AddConstParameter("omega", 830, 1700, 1500, "rad/s", "Angular velocity"); // angular speed for rotary model
-	AddConstParameter("ALR", 1e-5, 5, 1, "-", "Air-to-liquid mass flow ratio"); // air-to-liquid mass flow ratio for two-fluid nozzle
+	AddConstParameter("ALR", 1e-5, 15, 1, "-", "Air-to-liquid mass flow ratio"); // air-to-liquid mass flow ratio for two-fluid nozzle
 	AddConstParameter("liquidDeltaP", 3, 200, 50, "bar", "Pressure drop in nozzle"); //liquid pressure drop in single-fluid nozzle
 	AddConstParameter("externalGasDeltaP", 0.5, 3, 3, "bar", "Gas pressure drop in nozzle"); // gas pressure drop in two-fluid nozzle with external mixing
 	AddConstParameter("internalGasDeltaP", 0.5, 15, 3, "bar", "Gas pressure drop in nozzle"); // gas pressure drop in two-fluid nozzle with internal mixing
